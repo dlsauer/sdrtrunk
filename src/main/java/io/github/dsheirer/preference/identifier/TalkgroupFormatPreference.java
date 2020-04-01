@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.prefs.Preferences;
 
 /**
@@ -109,7 +110,7 @@ public class TalkgroupFormatPreference extends Preference
     @Override
     public PreferenceType getPreferenceType()
     {
-        return PreferenceType.IDENTIFIER;
+        return PreferenceType.TALKGROUP_FORMAT;
     }
 
     /**
@@ -138,7 +139,7 @@ public class TalkgroupFormatPreference extends Preference
     /**
      * Default format for each protocol
      */
-    private IntegerFormat getDefaultFormat(Protocol protocol)
+    public static IntegerFormat getDefaultFormat(Protocol protocol)
     {
         switch(protocol)
         {
@@ -161,6 +162,25 @@ public class TalkgroupFormatPreference extends Preference
             case UNKNOWN:
             default:
                 return IntegerFormat.DECIMAL;
+        }
+    }
+
+    public static Set<IntegerFormat> getFormats(Protocol protocol)
+    {
+        switch(protocol)
+        {
+            case FLEETSYNC:
+            case LTR:
+            case LTR_NET:
+            case LTR_STANDARD:
+            case MPT1327:
+                return IntegerFormat.DECIMAL_FORMATTED;
+            case APCO25:
+            case MDC1200:
+            case PASSPORT:
+            case UNKNOWN:
+            default:
+                return IntegerFormat.DECIMAL_HEXADECIMAL;
         }
     }
 
@@ -214,12 +234,19 @@ public class TalkgroupFormatPreference extends Preference
      */
     public IntegerFormat getTalkgroupFormat(Protocol protocol)
     {
+        IntegerFormat format = null;
+
         if(mTalkgroupFormatProtocolMap.containsKey(protocol))
         {
-            return mTalkgroupFormatProtocolMap.get(protocol);
+            format = mTalkgroupFormatProtocolMap.get(protocol);
         }
 
-        return IntegerFormat.DECIMAL;
+        if(format == null || !getFormats(protocol).contains(format))
+        {
+            format = getDefaultFormat(protocol);
+        }
+
+        return format;
     }
 
     /**

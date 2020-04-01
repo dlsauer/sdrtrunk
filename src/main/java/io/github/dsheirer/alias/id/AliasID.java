@@ -91,7 +91,7 @@ public abstract class AliasID
      * Updates the value property for this alias ID.  Note: this method is intended to be invoked by all subclasses
      * each time that any of the subclass member variable values change.
      */
-    protected void updateValueProperty()
+    public void updateValueProperty()
     {
         valueProperty().set(toString());
 

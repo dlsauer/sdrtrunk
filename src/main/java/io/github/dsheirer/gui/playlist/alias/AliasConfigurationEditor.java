@@ -22,17 +22,25 @@
 
 package io.github.dsheirer.gui.playlist.alias;
 
+import com.google.common.eventbus.Subscribe;
 import impl.org.controlsfx.autocompletion.AutoCompletionTextFieldBinding;
 import impl.org.controlsfx.autocompletion.SuggestionProvider;
 import io.github.dsheirer.alias.Alias;
 import io.github.dsheirer.alias.id.AliasID;
 import io.github.dsheirer.alias.id.AliasIDType;
 import io.github.dsheirer.alias.id.broadcast.BroadcastChannel;
+import io.github.dsheirer.alias.id.talkgroup.Talkgroup;
+import io.github.dsheirer.alias.id.talkgroup.TalkgroupFormatter;
+import io.github.dsheirer.eventbus.MyEventBus;
 import io.github.dsheirer.gui.playlist.Editor;
 import io.github.dsheirer.gui.playlist.alias.identifier.EmptyIdentifierEditor;
 import io.github.dsheirer.gui.playlist.alias.identifier.IdentifierEditorFactory;
 import io.github.dsheirer.icon.Icon;
 import io.github.dsheirer.playlist.PlaylistManager;
+import io.github.dsheirer.preference.PreferenceType;
+import io.github.dsheirer.preference.UserPreferences;
+import io.github.dsheirer.preference.identifier.IntegerFormat;
+import io.github.dsheirer.protocol.Protocol;
 import javafx.beans.binding.Bindings;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
@@ -47,7 +55,9 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
@@ -80,6 +90,7 @@ public class AliasConfigurationEditor extends Editor<Alias>
     private static final Logger mLog = LoggerFactory.getLogger(AliasConfigurationEditor.class);
 
     private PlaylistManager mPlaylistManager;
+    private UserPreferences mUserPreferences;
     private EditorModificationListener mEditorModificationListener = new EditorModificationListener();
     private TextField mAliasListNameField;
     private TextField mGroupField;
@@ -111,12 +122,13 @@ public class AliasConfigurationEditor extends Editor<Alias>
     private Editor<AliasID> mIdentifierEditor;
     private VBox mIdentifierEditorBox;
 
-    public AliasConfigurationEditor(PlaylistManager playlistManager)
+    public AliasConfigurationEditor(PlaylistManager playlistManager, UserPreferences userPreferences)
     {
         mPlaylistManager = playlistManager;
+        mUserPreferences = userPreferences;
+        MyEventBus.getEventBus().register(this);
 
         IconFontFX.register(jiconfont.icons.font_awesome.FontAwesome.getIconFont());
-
 
         setMaxWidth(Double.MAX_VALUE);
 
@@ -131,6 +143,31 @@ public class AliasConfigurationEditor extends Editor<Alias>
         scrollPane.setContent(getTitledPanesBox());
 
         getChildren().addAll(hbox, scrollPane);
+    }
+
+
+    @Subscribe
+    public void preferenceUpdated(PreferenceType preferenceType)
+    {
+        mLog.debug("Preference updated: " + preferenceType);
+        if(preferenceType == PreferenceType.TALKGROUP_FORMAT)
+        {
+            //When the talkgroup format changes, refresh any alias identifiers in the identifier list so that the
+            //display string is correctly formatted.
+            for(AliasID id: mIdentifiersList.getItems())
+            {
+                id.valueProperty().setValue(null);
+                id.updateValueProperty();
+            }
+        }
+
+        //Re-set the selected identifier to force it to update controls with the preference change.
+        AliasID selected = getIdentifiersList().getSelectionModel().getSelectedItem();
+
+        if(selected != null)
+        {
+            getIdentifierEditor().setItem(selected);
+        }
     }
 
     @Override
@@ -150,6 +187,7 @@ public class AliasConfigurationEditor extends Editor<Alias>
         getIconNodeComboBox().setDisable(disable);
         getIdentifiersList().setDisable(disable);
         getIdentifiersList().getItems().clear();
+        getAddIdentifierButton().setDisable(disable);
 
         updateStreamViews();
 
@@ -333,7 +371,7 @@ public class AliasConfigurationEditor extends Editor<Alias>
 
             if(editor == null)
             {
-                editor = IdentifierEditorFactory.getEditor(aliasID.getType());
+                editor = IdentifierEditorFactory.getEditor(aliasID.getType(), mUserPreferences);
                 mIdentifierEditorMap.put(aliasID.getType(), editor);
             }
         }
@@ -361,6 +399,14 @@ public class AliasConfigurationEditor extends Editor<Alias>
             mIdentifiersList.setPrefHeight(75);
             mIdentifiersList.getSelectionModel().selectedItemProperty()
                 .addListener((observable, oldValue, newValue) -> setIdentifier(newValue));
+            mIdentifiersList.setCellFactory(new Callback<ListView<AliasID>,ListCell<AliasID>>()
+            {
+                @Override
+                public ListCell<AliasID> call(ListView<AliasID> param)
+                {
+                    return new AliasIdentifierCell();
+                }
+            });
         }
 
         return mIdentifiersList;
@@ -373,6 +419,20 @@ public class AliasConfigurationEditor extends Editor<Alias>
             mAddIdentifierButton = new MenuButton("Add");
             mAddIdentifierButton.setMaxWidth(Double.MAX_VALUE);
             mAddIdentifierButton.setDisable(true);
+
+            Menu talkgroup = new Menu("Talkgroup");
+            MenuItem apco25Item = new MenuItem("APCO-25");
+            MenuItem ltrItem = new MenuItem("LTR");
+            MenuItem mdc1200Item = new MenuItem("MDC-1200");
+            MenuItem mpt1327Item = new MenuItem("MPT-1327");
+            MenuItem passportItem = new MenuItem("Passport");
+            talkgroup.getItems().addAll(apco25Item, ltrItem, mdc1200Item, mpt1327Item, passportItem);
+
+            Menu talkgroupRange = new Menu("Talkgroup Range");
+            Menu radioId = new Menu("Radio ID");
+            Menu radioIdRange = new Menu("Radio ID Range");
+
+            mAddIdentifierButton.getItems().addAll(talkgroup, talkgroupRange, radioId, radioIdRange);
         }
 
         return mAddIdentifierButton;
@@ -822,6 +882,44 @@ public class AliasConfigurationEditor extends Editor<Alias>
         public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue)
         {
             modifiedProperty().set(true);
+        }
+    }
+
+    public class AliasIdentifierCell extends ListCell<AliasID>
+    {
+        @Override
+        protected void updateItem(AliasID item, boolean empty)
+        {
+            super.updateItem(item, empty);
+
+            if(item != null)
+            {
+                if(item instanceof Talkgroup)
+                {
+                    Talkgroup talkgroup = (Talkgroup)item;
+                    Protocol protocol = talkgroup.getProtocol();
+                    IntegerFormat integerFormat = mUserPreferences.getTalkgroupFormatPreference()
+                        .getTalkgroupFormat(protocol);
+                    String formatted = TalkgroupFormatter.format(protocol, talkgroup.getValue(), integerFormat);
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("Talkgroup:").append(formatted);
+                    sb.append(" Protocol:").append((talkgroup.getProtocol()));
+
+                    if(!talkgroup.isValid())
+                    {
+                        sb.append(" **NOT VALID**");
+                    }
+                    setText(sb.toString());
+                }
+                else
+                {
+                    setText(item.toString());
+                }
+            }
+            else
+            {
+                setText(null);
+            }
         }
     }
 

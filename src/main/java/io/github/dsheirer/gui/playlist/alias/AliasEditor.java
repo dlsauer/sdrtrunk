@@ -25,6 +25,7 @@ package io.github.dsheirer.gui.playlist.alias;
 import io.github.dsheirer.alias.Alias;
 import io.github.dsheirer.icon.Icon;
 import io.github.dsheirer.playlist.PlaylistManager;
+import io.github.dsheirer.preference.UserPreferences;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.value.ObservableValue;
@@ -67,6 +68,7 @@ import java.util.Optional;
 public class AliasEditor extends SplitPane
 {
     private PlaylistManager mPlaylistManager;
+    private UserPreferences mUserPreferences;
     private AliasConfigurationEditor mAliasConfigurationEditor;
     private TableView<Alias> mAliasTableView;
     private Label mPlaceholderLabel;
@@ -77,9 +79,10 @@ public class AliasEditor extends SplitPane
     private HBox mSearchBox;
     private TextField mSearchField;
 
-    public AliasEditor(PlaylistManager playlistManager)
+    public AliasEditor(PlaylistManager playlistManager, UserPreferences userPreferences)
     {
         mPlaylistManager = playlistManager;
+        mUserPreferences = userPreferences;
 
         HBox channelsBox = new HBox();
         channelsBox.setPadding(new Insets(5, 5, 5, 5));
@@ -131,7 +134,7 @@ public class AliasEditor extends SplitPane
     {
         if(mAliasConfigurationEditor == null)
         {
-            mAliasConfigurationEditor = new AliasConfigurationEditor(mPlaylistManager);
+            mAliasConfigurationEditor = new AliasConfigurationEditor(mPlaylistManager, mUserPreferences);
         }
 
         return mAliasConfigurationEditor;
